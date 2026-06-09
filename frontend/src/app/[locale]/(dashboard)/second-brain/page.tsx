@@ -55,10 +55,11 @@ export default function SecondBrainPage() {
     try {
       if (searchQuery) {
         // Full search with mode
-        const data = await apiClient.post<{ items: Note[]; total: number }>(
+        const data = await apiClient.post<Note[] | { items: Note[] }>(
           `/v1/notes/search?query=${encodeURIComponent(searchQuery)}&limit=20&mode=${searchMode}${searchTag ? `&tag=${encodeURIComponent(searchTag)}` : ""}${dateFrom ? `&date_from=${dateFrom}` : ""}${dateTo ? `&date_to=${dateTo}` : ""}`
         );
-        setNotes(data.items);
+        const results = Array.isArray(data) ? data : (data as { items: Note[] }).items || [];
+        setNotes(results);
       } else {
         // List with optional tag filter
         const params = new URLSearchParams();
