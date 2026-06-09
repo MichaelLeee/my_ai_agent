@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { BookOpen, Plus } from "lucide-react";
+import { BookOpen, Plus, AlertTriangle } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui";
 import { InstructionCard } from "@/components/custom-instructions/instruction-card";
@@ -11,10 +12,11 @@ import type { CustomInstruction, InstructionCreate, InstructionUpdate } from "@/
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
 export default function InstructionsPage() {
-  const { instructions, isLoading, fetchInstructions, createInstruction, updateInstruction, deleteInstruction } = useCustomInstructions();
+  const { instructions, isLoading, error, fetchInstructions, createInstruction, updateInstruction, deleteInstruction } = useCustomInstructions();
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingInstruction, setEditingInstruction] = useState<CustomInstruction | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => { fetchInstructions(); }, [fetchInstructions]);
 
@@ -23,13 +25,42 @@ export default function InstructionsPage() {
     return await createInstruction(data as InstructionCreate);
   };
 
+  const handleDelete = async () => {
+    if (!deleteId) return;
+    setDeleting(true);
+    const ok = await deleteInstruction(deleteId);
+    if (!ok) toast.error("Failed to delete instruction");
+    setDeleting(false);
+    setDeleteId(null);
+  };
+
   if (isLoading) return <div className="flex items-center justify-center py-20"><Spinner /></div>;
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center">
+        <div className="rounded-full bg-destructive/10 p-4 mb-4">
+          <AlertTriangle className="size-8 text-destructive" />
+        </div>
+        <h3 className="text-lg font-semibold">Failed to load instructions</h3>
+        <p className="text-muted-foreground max-w-sm mt-1 mb-4">{error}</p>
+        <Button variant="outline" onClick={fetchInstructions}>Retry</Button>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Custom Instructions</h1>
+          <h1 className="text-2xl font-bold tracking-tight">
+            Custom Instructions
+            {instructions.length > 0 && (
+              <span className="ml-2 inline-flex items-center justify-center rounded-full bg-muted px-2 py-0.5 text-sm font-medium text-muted-foreground">
+                {instructions.length}
+              </span>
+            )}
+          </h1>
           <p className="text-muted-foreground">Teach the AI agent how to behave by creating system prompt overrides.</p>
         </div>
         <Button onClick={() => { setEditingInstruction(null); setEditorOpen(true); }}>
@@ -65,7 +96,9 @@ export default function InstructionsPage() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={async () => { if (deleteId) { await deleteInstruction(deleteId); setDeleteId(null); } }} className="bg-destructive text-destructive-foreground">Delete</AlertDialogAction>
+            <AlertDialogAction onClick={handleDelete} disabled={deleting} className="bg-destructive text-destructive-foreground">
+              {deleting ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

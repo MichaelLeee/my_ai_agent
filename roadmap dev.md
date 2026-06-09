@@ -346,3 +346,39 @@
   - GET /api/v1/dashboard — aggregated stats, tags, activity feed
   - POST /api/v1/notes/search?mode=hybrid&tag=devops — hybrid search with filters
   - Agent now calls remember/recall/forget across conversations
+
+## find dangling objects (uncommitted files Git still remembers):
+  git fsck --lost-found
+  ### example
+  git fsck --lost-found
+  Checking ref database: 100% (1/1), done.
+  Checking object directories: 100% (256/256), done.
+  dangling commit 07d00987056564e9c71dcf6af00a7122476b9a4b
+  dangling commit 5e418f81f7f77b8f4b1da72c1417276358bba353
+  dangling commit 7d349782f173a85893cdfe529613f0978d4f54db
+  dangling blob b4148927ce21383f682d16a8fe4dd605d8115554
+  dangling tree 60978421444c7426fe23e6b5f9c4b8d5d3dcf459
+  # See what's in each dangling commit
+  git show 07d0098 --stat
+  git show 5e418f8 --stat
+  git show 7d34978 --stat
+
+  # Also check the dangling blob
+  git show b4148927
+  git checkout 07d0098 -b recovery
+  # You're on recovery. Push it directly as the feature branch:
+  git push origin recovery:feature/second-brain --force
+
+  # Now make main match it:
+  git checkout main
+  git reset --hard recovery
+  git push origin main --force
+
+  # Go back and clean up:
+  git branch -f feature/second-brain recovery
+  git push origin feature/second-brain --force
+  git checkout main
+  git reset --hard recovery
+  git push origin main --force
+  git checkout feature/second-brain
+  git branch -D recovery

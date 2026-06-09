@@ -4,12 +4,16 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   ArrowUpRight,
-  CreditCard,
-  Database,
+  Brain,
+  Hash,
+  Lightbulb,
+  Link2,
   List,
   MessageSquare,
   Search,
   Star,
+  TrendingUp,
+  Zap,
 } from "lucide-react";
 import { ActiveSessions } from "@/components/dashboard/active-sessions";
 import { OnboardingBanner } from "@/components/dashboard/onboarding-banner";
@@ -18,17 +22,29 @@ import { RecentActivity } from "@/components/dashboard/recent-activity";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { SubscriptionChip } from "@/components/dashboard/subscription-chip";
 import { TeamSummary } from "@/components/dashboard/team-summary";
-import { ToolUsage } from "@/components/dashboard/tool-usage";
 import { useAuth } from "@/hooks";
 import { apiClient } from "@/lib/api-client";
 import { ROUTES } from "@/lib/constants";
 import { cn } from "@/lib/utils";
-import { listCollections, getCollectionInfo } from "@/lib/rag-api";
 import type { HealthResponse } from "@/types";
 
-interface ConversationsResponse {
-  total?: number;
-  items: Array<{ id: string }>;
+interface DashboardData {
+  stats: {
+    total_notes: number;
+    total_links: number;
+    unread_insights: number;
+    journal_streak: number;
+    journal_this_week: number;
+  };
+  top_tags: Array<{ tag: string; count: number }>;
+  recent_activity: Array<{
+    type: string;
+    id: string;
+    title: string;
+    insight_type?: string;
+    timestamp: string | null;
+  }>;
+  insights_summary: Record<string, number>;
 }
 
 function getGreeting(): string {
@@ -42,9 +58,8 @@ export default function DashboardPage() {
   const { user } = useAuth();
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [healthError, setHealthError] = useState(false);
-  const [conversations, setConversations] = useState<{ total: number } | null>(null);
-  const [convLoading, setConvLoading] = useState(true);
-  const [ragStats, setRagStats] = useState<{ collections: number; vectors: number } | null>(null);
+  const [dash, setDash] = useState<DashboardData | null>(null);
+  const [dashLoading, setDashLoading] = useState(true);
 
   useEffect(() => {
     apiClient
@@ -56,24 +71,10 @@ export default function DashboardPage() {
       .catch(() => setHealthError(true));
 
     apiClient
-      .get<ConversationsResponse>("/conversations?limit=1")
-      .then((d) => setConversations({ total: d.total ?? d.items?.length ?? 0 }))
-      .catch(() => setConversations({ total: 0 }))
-      .finally(() => setConvLoading(false));
-    listCollections()
-      .then(async (list) => {
-        let totalVectors = 0;
-        for (const name of list.items) {
-          try {
-            const info = await getCollectionInfo(name);
-            totalVectors += info.total_vectors;
-          } catch {
-            /* ignore */
-          }
-        }
-        setRagStats({ collections: list.items.length, vectors: totalVectors });
-      })
-      .catch(() => setRagStats({ collections: 0, vectors: 0 }));
+      .get<DashboardData>("/v1/dashboard")
+      .then(setDash)
+      .catch(() => {})
+      .finally(() => setDashLoading(false));
   }, []);
 
   const firstName = user?.full_name?.split(" ")[0] || user?.email?.split("@")[0];
@@ -114,7 +115,7 @@ export default function DashboardPage() {
             )}
           </h1>
           <p className="text-foreground/65 mt-4 max-w-md text-sm">
-            Here&apos;s what&apos;s happening with your workspace.
+            Here&apos;s what&apos;s happening with your Second Brain.
           </p>
 
           <div className="mt-7 flex flex-wrap items-center gap-3">
@@ -163,15 +164,15 @@ export default function DashboardPage() {
 
           <dl className="space-y-2.5 text-xs">
             <div className="flex items-center justify-between">
-              <dt className="text-foreground/55 font-mono tracking-wider uppercase">Collections</dt>
+              <dt className="text-foreground/55 font-mono tracking-wider uppercase">Notes</dt>
               <dd className="text-foreground font-mono tabular-nums">
-                {ragStats ? ragStats.collections : "—"}
+                {dashLoading ? "—" : (dash?.stats.total_notes ?? 0).toLocaleString()}
               </dd>
             </div>
             <div className="flex items-center justify-between">
-              <dt className="text-foreground/55 font-mono tracking-wider uppercase">Vectors</dt>
+              <dt className="text-foreground/55 font-mono tracking-wider uppercase">Insights</dt>
               <dd className="text-foreground font-mono tabular-nums">
-                {ragStats ? ragStats.vectors.toLocaleString() : "—"}
+                {dashLoading ? "—" : (dash?.stats.unread_insights ?? 0).toLocaleString()}
               </dd>
             </div>
             <div className="flex items-center justify-between">
@@ -184,53 +185,102 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* WORKSPACE METRICS */}
+      {/* SECOND BRAIN METRICS */}
       <div className="flex items-center justify-between">
         <h2 className="text-foreground/55 font-mono text-[11px] tracking-wider uppercase">
-          Workspace metrics
+          Second Brain
         </h2>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-2">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
-          label="Conversations"
-          value={convLoading ? "—" : (conversations?.total ?? 0).toLocaleString()}
-          icon={MessageSquare}
-          loading={convLoading}
+          label="Notes"
+          value={dashLoading ? "—" : (dash?.stats.total_notes ?? 0).toLocaleString()}
+          icon={Brain}
+          loading={dashLoading}
         />
         <StatCard
-          label="Knowledge base"
-          value={ragStats ? ragStats.vectors.toLocaleString() : "—"}
-          unit={ragStats ? `vector${ragStats.vectors === 1 ? "" : "s"}` : undefined}
-          icon={Database}
-          loading={!ragStats}
+          label="Links"
+          value={dashLoading ? "—" : (dash?.stats.total_links ?? 0).toLocaleString()}
+          icon={Link2}
+          loading={dashLoading}
         />
-      </div>
-      {/* Manage billing link */}
-      <div className="flex justify-end">
-        <Link
-          href={ROUTES.BILLING}
-          className="text-foreground/55 hover:text-foreground inline-flex items-center gap-1.5 font-mono text-[10px] tracking-wider uppercase transition-colors"
-        >
-          <CreditCard className="h-3.5 w-3.5" />
-          Manage billing →
-        </Link>
+        <StatCard
+          label="Insights"
+          value={dashLoading ? "—" : (dash?.stats.unread_insights ?? 0).toLocaleString()}
+          delta={dash?.stats.unread_insights ? dash.stats.unread_insights : undefined}
+          icon={Lightbulb}
+          loading={dashLoading}
+        />
+        <StatCard
+          label="Journal streak"
+          value={dashLoading ? "—" : (dash?.stats.journal_streak ?? 0).toLocaleString()}
+          unit="days"
+          icon={Zap}
+          loading={dashLoading}
+        />
       </div>
 
-      {/* Activity + behavior insights */}
+      {/* Activity + insights sidebar */}
       <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
         <RecentActivity />
+
+        {/* Top tags + insight summary sidebar */}
+        <div className="space-y-4">
+          {/* Top tags */}
+          {dash?.top_tags && dash.top_tags.length > 0 && (
+            <div className="border-foreground/10 bg-foreground/[0.02] rounded-2xl border p-5">
+              <p className="text-foreground/55 mb-3 font-mono text-[10px] tracking-wider uppercase">
+                Top tags
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {dash.top_tags.map(({ tag, count }) => (
+                  <span
+                    key={tag}
+                    className="border-foreground/15 bg-foreground/5 text-foreground/75 hover:border-foreground/30 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors"
+                  >
+                    {tag}
+                    <span className="text-foreground/40 font-mono text-[10px]">{count}</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Insight summary */}
+          {dash?.insights_summary && Object.keys(dash.insights_summary).length > 0 && (
+            <div className="border-foreground/10 bg-foreground/[0.02] rounded-2xl border p-5">
+              <p className="text-foreground/55 mb-3 font-mono text-[10px] tracking-wider uppercase">
+                Insights
+              </p>
+              <div className="space-y-2">
+                {Object.entries(dash.insights_summary).map(([type, count]) => (
+                  <div key={type} className="flex items-center justify-between text-sm">
+                    <span className="text-foreground/70 capitalize">{type}</span>
+                    <span className="text-foreground/50 font-mono text-xs">{count}</span>
+                  </div>
+                ))}
+              </div>
+              {dash?.insights_summary && Object.keys(dash.insights_summary).length > 0 && (
+                <Link
+                  href="/second-brain"
+                  className="text-brand hover:text-brand/80 mt-3 inline-flex items-center gap-1 text-xs font-medium transition-colors"
+                >
+                  <TrendingUp className="size-3" /> View all insights
+                </Link>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <ToolUsage />
         <TeamSummary />
-      </div>
-      <div className="grid gap-4 lg:grid-cols-2">
         <ActiveSessions />
       </div>
 
       <QuickActions />
+
       {/* Admin row */}
       {user?.role === "admin" && (
         <div>
@@ -268,6 +318,7 @@ function SearchHint() {
     </div>
   );
 }
+
 function AdminTile({
   icon: Icon,
   label,
