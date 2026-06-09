@@ -574,3 +574,11 @@ def get_instruction_service(db: DBSession) -> InstructionService:
 
 
 InstructionSvc = Annotated[InstructionService, Depends(get_instruction_service)]
+from app.services.note import NoteService
+
+
+def get_note_service(db: DBSession) -> NoteService:
+    return NoteService(db)
+
+
+NoteSvc = Annotated[NoteService, Depends(get_note_service)]

@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "Second Brain Capture",
+  "version": "1.0",
+  "description": "Capture ideas to your Second Brain while browsing.",
+  "permissions": ["activeTab", "storage"],
+  "host_permissions": ["http://localhost:3030/*", "http://localhost:8080/*"],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icon.svg",
+      "48": "icon.svg",
+      "128": "icon.svg"
+    }
+  },
+  "icons": {
+    "16": "icon.svg",
+    "48": "icon.svg",
+    "128": "icon.svg"
+  }
+}

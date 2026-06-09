@@ -18,6 +18,9 @@ from app.db.models.audit_log import AppAdminAuditLog
 from app.db.models.knowledge_base import KnowledgeBase
 from app.db.models.user_slash_command import UserSlashCommand
 from app.db.models.custom_instruction import CustomInstruction
+from app.db.models.note import Note
+from app.db.models.insight import Insight
+from app.db.models.note_link import NoteLink
 
 __all__ = [
     "User",
@@ -39,6 +42,9 @@ __all__ = [
     "Invitation",
     "AppAdminAuditLog",
     "CustomInstruction",
+    "Insight",
+    "Note",
+    "NoteLink",
     "KnowledgeBase",
     "UserSlashCommand",
 ]

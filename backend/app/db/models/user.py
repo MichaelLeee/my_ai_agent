@@ -50,6 +50,12 @@ class User(Base, TimestampMixin):
     custom_instructions: Mapped[list["CustomInstruction"]] = relationship(
         "CustomInstruction", back_populates="user", cascade="all, delete-orphan"
     )
+    notes: Mapped[list["Note"]] = relationship(
+        "Note", back_populates="user", cascade="all, delete-orphan"
+    )
+    insights: Mapped[list["Insight"]] = relationship(
+        "Insight", back_populates="user", cascade="all, delete-orphan"
+    )
 
     @property
     def user_role(self) -> UserRole:

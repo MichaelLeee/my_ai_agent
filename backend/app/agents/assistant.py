@@ -29,7 +29,17 @@ from app.agents.prompts import get_system_prompt_with_rag
 from app.agents.tools import get_current_datetime
 from app.agents.tools.chart_tool import create_chart
 from app.agents.tools.custom_instruction_tool import get_active_instructions
+from app.agents.tools.daily_journal import daily_journal
+from app.agents.tools.morning_briefing import auto_link_tool, morning_briefing
 from app.agents.tools.rag_tool import search_knowledge_base
+from app.agents.tools.contradiction_tools import contradictions
+from app.agents.tools.second_brain import (
+    create_note_tool, link_notes_tool, list_notes_tool,
+    search_notes_tool, weekly_summary_tool,
+)
+from app.agents.tools.surface_tools import (
+    forgotten_notes, smart_suggestions, suggest_tags,
+)
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -112,6 +122,28 @@ class AssistantAgent:
             return get_current_datetime()
 
         @agent.tool
+        async def morning_briefing_tool(ctx: RunContext[Deps]) -> str:
+            """Get the morning briefing with unread insights. Call at the
+            start of every conversation before anything else."""
+            return await morning_briefing(ctx)
+
+        @agent.tool
+        async def auto_link(
+            ctx: RunContext[Deps], insight_id: str, action: str = "link",
+        ) -> str:
+            """Accept or dismiss a suggested link between notes. Action is
+            'link' to create the link or 'dismiss' to ignore."""
+            return await auto_link_tool(ctx, insight_id, action)
+
+        @agent.tool
+        async def daily_journal_check(ctx: RunContext[Deps]) -> str:
+            """Check if the user has journaled today. Call this at the start
+            of every conversation. If they haven't journaled, prompt them to
+            reflect. When they respond, use create_note with tags: ['journal'].
+            """
+            return await daily_journal(ctx)
+
+        @agent.tool
         async def active_instructions(ctx: RunContext[Deps]) -> str:
             """Get the user's active custom system prompt instructions.
 
@@ -119,6 +151,89 @@ class AssistantAgent:
             returned, you MUST follow them for the rest of the conversation.
             """
             return await get_active_instructions(ctx)
+
+        @agent.tool
+        async def create_note(
+            ctx: RunContext[Deps], title: str, content: str, tags: str = "",
+        ) -> str:
+            """Create a new note in the user's Second Brain for later reference.
+            Use when the user wants to save something. Tags are comma-separated.
+            """
+            return await create_note_tool(ctx, title, content, tags)
+
+        @agent.tool
+        async def search_notes(
+            ctx: RunContext[Deps], query: str, limit: int = 5,
+        ) -> str:
+            """Search the user's Second Brain using semantic search.
+            Use when the user asks about something they might have saved.
+            """
+            return await search_notes_tool(ctx, query, limit)
+
+        @agent.tool
+        async def list_notes(
+            ctx: RunContext[Deps], tag: str = "", limit: int = 10,
+        ) -> str:
+            """List the user's recent Second Brain notes, optionally filtered by tag.
+            Use when the user wants to browse their saved notes.
+            """
+            return await list_notes_tool(ctx, tag, limit)
+
+        @agent.tool
+        async def link_notes(
+            ctx: RunContext[Deps], source_title: str, target_title: str,
+        ) -> str:
+            """Link two notes together. Use when the user says notes are related."""
+            return await link_notes_tool(ctx, source_title, target_title)
+
+        @agent.tool
+        async def weekly_summary(ctx: RunContext[Deps]) -> str:
+            """Get the user's most recent weekly summary. Use when the user asks
+            for an overview of what they worked on this week."""
+            return await weekly_summary_tool(ctx)
+
+        @agent.tool
+        async def forgotten_notes_tool(ctx: RunContext[Deps]) -> str:
+            """Surface notes the user hasn't visited in 90+ days.
+
+            Call this once per conversation. If forgotten notes are found,
+            mention one naturally and ask if the user wants to review more.
+            """
+            return await forgotten_notes(ctx)
+
+        @agent.tool
+        async def suggest_tags_tool(
+            ctx: RunContext[Deps], title: str, content: str,
+        ) -> str:
+            """Suggest tags for a note based on existing tag vocabulary.
+
+            Use before creating a note or when the user asks for tag ideas.
+            Returns up to 5 matching tags from the user's history.
+
+            Args:
+                title: The note title.
+                content: The note content.
+            """
+            return await suggest_tags(ctx, title, content)
+
+        @agent.tool
+        async def smart_suggestions_tool(ctx: RunContext[Deps]) -> str:
+            """Get actionable suggestions based on note-writing patterns.
+
+            Call once per conversation. Returns suggestions like summarizing
+            a topic, organizing unconnected notes, or reviewing decisions.
+            """
+            return await smart_suggestions(ctx)
+
+        @agent.tool
+        async def contradictions_tool(ctx: RunContext[Deps]) -> str:
+            """Surface possible contradictions between recent and older notes.
+
+            Call once per conversation. If contradictions are found, present
+            them naturally — e.g. 'You said X last month, but this week you
+            wrote Y. Want to reconcile these?'
+            """
+            return await contradictions(ctx)
 
         @agent.tool
         async def search_documents(ctx: RunContext[Deps], query: str, top_k: int = 5) -> str:

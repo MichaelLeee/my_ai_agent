@@ -24,6 +24,7 @@ from app.api.routes.v1 import knowledge_bases
 from app.api.routes.v1 import billing
 from app.api.routes.v1 import contact
 from app.api.routes.v1 import custom_instructions
+from app.api.routes.v1 import notes
 from app.api.routes.v1 import me_slash_commands
 from app.api.routes.v1 import admin_stats
 
@@ -92,6 +93,7 @@ v1_router.include_router(knowledge_bases.router, prefix="/kb", tags=["knowledge-
 v1_router.include_router(billing.router, prefix="/billing", tags=["billing"])
 v1_router.include_router(contact.router, tags=["contact"])
 v1_router.include_router(custom_instructions.router, tags=["custom-instructions"])
+v1_router.include_router(notes.router, tags=["notes"])
 v1_router.include_router(
     me_slash_commands.router, prefix="/me/slash-commands", tags=["me:slash-commands"]
 )
