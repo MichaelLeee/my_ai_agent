@@ -382,3 +382,241 @@
   git push origin main --force
   git checkout feature/second-brain
   git branch -D recovery
+
+## Everything we planned is built. Three directions from here:
+
+  ┌──────────────┬─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+  │  Direction   │                                                              What it means                                                              │
+  ├──────────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Polish &     │ Clean up the frontend, fix paper cuts, write docs, make it feel polished. The backend is solid but the UI is functional-not-pretty.     │
+  │ Ship         │                                                                                                                                         │
+  ├──────────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Go Deeper    │ RAG improvements (hybrid search, re-ranking, better chunking), richer entity extraction, multi-step agent workflows. Make what exists   │
+  │              │ better.                                                                                                                                 │
+  ├──────────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Go Wider     │ Mobile PWA for quick capture, email digest, Slack/Telegram integration. Expand where the agent reaches you.                             │
+  └──────────────┴─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+  Which pulls you?
+## Plan: v4.0 — Polish & Ship
+
+ Context
+
+ Backend is solid — all features work (Second Brain, Reflection Loop, Agent Memory, Dashboard API, Advanced Search). Frontend is functional but rough:
+ dashboard shows placeholder data, search UI doesn't expose new modes, error states swallow failures, loading states are inconsistent. This pass tightens the
+ experience across 3 pages. No new backend code.
+
+ Changes (4 files, frontend-only)
+
+ 1. Dashboard page — rewrite to use new /v1/dashboard API
+
+ File: frontend/src/app/[locale]/(dashboard)/dashboard/page.tsx
+
+ Replace scattered API calls (health, conversations, RAG collections, tool-usage) with one aggregated GET /api/v1/dashboard call.
+
+ New layout:
+ Row 1: Stat cards — total notes, journal streak, unread insights, total links
+ Row 2: [Recent activity feed] [Insights sidebar + Top tags cloud]
+
+ Stat cards use real data from dashboard API with deltas (journal streak, insight count change). No more RAG vector stats in the main dashboard.
+
+ Right column (currently empty) gets: insight summary cards (3 most recent unread), top tags cloud.
+
+ 2. Second Brain page — add search mode + filters
+
+ File: frontend/src/app/[locale]/(dashboard)/second-brain/page.tsx
+
+     2. Second Brain page — add search mode + filters
+
+     File: frontend/src/app/[locale]/(dashboard)/second-brain/page.tsx
+
+     - Add search mode toggle: "Smart" (hybrid) / "Meaning" (semantic) / "Words" (keyword)
+     - Add date range filter (from/to date inputs) alongside existing tag filter
+     - Fix handleSave — wrap in try/catch, toast error on failure
+     - Fix fetchGraph — show toast on error instead of silent catch {}
+     - Show note title in search results (API already returns it)
+
+     3. Instructions page — fix loading/error states
+
+     File: frontend/src/app/[locale]/(dashboard)/instructions/page.tsx
+
+     - Fix infinite spinner: add error boundary — if fetch fails, show ErrorState with retry
+     - Add instruction count badge to page heading
+     - Add loading spinner to delete button while deleting
+     - Add toast on delete/create failure
+
+     4. Dashboard API proxy
+
+     File: frontend/src/app/api/v1/dashboard/route.ts — new Next.js API route proxying to GET /api/v1/dashboard on backend. Follows existing proxy pattern from
+     notes/route.ts.
+
+     Verification
+
+     1. bun dev — dashboard loads with real Second Brain stats, no dashes or RAG-only data
+     2. Second Brain page: filter by tag + search by keyword → correct results
+     3. Search mode toggle switches between semantic/keyword/hybrid
+     4. Delete an instruction → spinner shows, toast confirms
+     5. Kill backend → dashboard shows error states, not infinite spinners
+##  Drop into frontend/. Summary of changes:
+  ┌──────────────┬────────────────────────────────────────────────────┬────────────────────────────────────────────────────────────────────────────────────────
+───────────────────────────┐
+  │     Page     │                       Before                       │                                                       After
+                           │
+  ├──────────────┼────────────────────────────────────────────────────┼────────────────────────────────────────────────────────────────────────────────────────
+───────────────────────────┤
+  │ Dashboard    │ RAG stats, empty right column, scattered API calls │ Second Brain stats (notes/links/insights/streak), top tags cloud, insight summary sideb
+ar, one /v1/dashboard call │
+  ├──────────────┼────────────────────────────────────────────────────┼────────────────────────────────────────────────────────────────────────────────────────
+───────────────────────────┤
+  │ Second Brain │ Tag filter only, silent failures                   │ Search bar + mode toggle (Smart/Meaning/Words), date range filters, error toasts on sav
+e/delete/graph             │
+  ├──────────────┼────────────────────────────────────────────────────┼────────────────────────────────────────────────────────────────────────────────────────
+───────────────────────────┤
+  │ Instructions │ Infinite spinner on error, no feedback             │ Error state with retry, count badge, loading state on delete button, toast on failure
+                           │
+  ├──────────────┼────────────────────────────────────────────────────┼────────────────────────────────────────────────────────────────────────────────────────
+───────────────────────────┤
+  │ Proxy        │ Missing                                            │ New GET /api/v1/dashboard route
+                           │
+  └──────────────┴────────────────────────────────────────────────────┴────────────────────────────────────────────────────────────────────────────────────────
+───────────────────────────┘
+
+  Run bun dev to see the changes.
+
+ Three directions from here:
+  ┌─────┬─────────────────┬────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+───────────────┐
+  │  #  │    Direction    │                                                                   What it means
+               │
+  ├─────┼─────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+───────────────┤
+  │ 1   │ Mobile PWA      │ Quick capture app — open, type, save. Journal prompts. Offline drafts. The Second Brain in your pocket.
+               │
+  ├─────┼─────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+───────────────┤
+  │ 2   │ Agent Workflows │ Multi-step reasoning — "summarize everything I wrote about deployment this month" — agent chains search + read + synthesize + save.
+ Memory-aware. │
+  ├─────┼─────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+───────────────┤
+  │ 3   │ Rich RAG        │ Hybrid BM25+vector search on knowledge bases, Cohere re-ranking, citation highlighting, better chunking. Makes document search actu
+ally work.     │
+  └─────┴─────────────────┴────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+───────────────┘
+
+  Mobile widens reach. Workflows deepen intelligence. RAG strengthens the foundation.
+##  Plan: v5.0 — Mobile PWA + Agent Workflows + Rich RAG
+
+ Context
+
+ Three independent features that make the platform reachable (PWA), intelligent (workflows), and knowledgeable (RAG):
+
+ 1. Mobile PWA — the frontend is already mobile-responsive. Add installability, offline caching, and a quick-capture page so users can save thoughts from anywh
+ere.
+ 2. Agent Workflows — the agent has 18 tools but can't read full note content (search returns snippets). Add a get_note tool + system prompt nudge to enable mu
+lti-step reasoning: "search → read →
+ synthesize → save".
+ 3. Rich RAG — hybrid BM25+vector search and re-ranking already exist in the RAG pipeline but are disabled by default. Enable them and add a read_document agen
+t tool.
+
+ Changes (7 new + 4 edits, all small)
+
+ Mobile PWA — 4 new files
+
+ 1. frontend/public/manifest.json — PWA manifest: name "My AI Agent", icons, theme_color, start_url, display standalone
+ 2. frontend/public/sw.js — Minimal service worker: cache JS/CSS on install, network-first for API, cache-first for static assets. Handles offline fallback pag
+e.
+ 3. frontend/src/app/[locale]/(dashboard)/capture/page.tsx — Quick capture page:
+   - Auto-focused textarea for content
+   - Optional title input (auto-suggests from content)
+   - Save button saves note via POST /v1/notes with tags=["quick-capture"]
+   - Toast confirmation, then clears for next capture
+   - Minimal chrome — just the input, no sidebar/header distraction
+ 4. frontend/src/app/layout.tsx — Already exists, just needs <link rel="manifest"> and <meta name="theme-color"> added to <head>
+
+ Agent Workflows — 1 new + 3 edits
+
+ 5. backend/app/agents/tools/workflow_tools.py — New file:
+   - get_note(ctx, identifier: str) — tries UUID first, falls back to title exact match, returns full note content. Uses pattern from existing tools (open asyn
+c_session_maker, call repo).
+ 6. backend/app/agents/assistant.py — Register get_note_tool via @agent.tool wrapper
+ 7. backend/app/agents/prompts.py — Add workflow instructions to system prompt:
+ "When the user asks you to summarize, synthesize, or find information across their notes, use search_notes to find relevant notes, then get_note to read the f
+ull content, then synthesize and
+ create_note with your findings."
+ 8. backend/app/agents/tools/second_brain.py — No changes needed. The create_note_tool already exists and can be chained after search_notes + get_note.
+
+ Rich RAG — 2 new + 1 edit
+
+ 9. backend/app/agents/tools/document_tools.py — New file:
+   - read_document(ctx, doc_id: str) — reads full document content by ID from the vector store. Calls RetrievalService.retrieve_by_document() and returns full
+text. Gives the agent access to complete
+ document content (not just search snippets).
+ 10. backend/app/core/config.py — Set enable_hybrid_search=True as default in RAG settings (already exists in config, just needs default change)
+ 11. backend/app/agents/assistant.py — Register read_document_tool
+
+     complete document content (not just search snippets).
+     10. backend/app/core/config.py — Set enable_hybrid_search=True as default in RAG settings (already exists in config, just needs default change)
+     11. backend/app/agents/assistant.py — Register read_document_tool
+
+     Feature details
+
+     3. frontend/src/app/[locale]/(dashboard)/capture/page.tsx — Quick capture page:
+       - Auto-focused textarea for content
+       - Optional title input (auto-suggests from content)
+       - Save button saves note via POST /v1/notes with tags=["quick-capture"]
+       - Toast confirmation, then clears for next capture
+       - Minimal chrome — just the input, no sidebar/header distraction
+     4. frontend/src/app/layout.tsx — Already exists, just needs <link rel="manifest"> and <meta name="theme-color"> added to <head>
+
+     Agent Workflows — 1 new + 3 edits
+
+     5. backend/app/agents/tools/workflow_tools.py — New file:
+       - get_note(ctx, identifier: str) — tries UUID first, falls back to title exact match, returns full note content. Uses pattern from existing tools (open
+     async_session_maker, call repo).
+     6. backend/app/agents/assistant.py — Register get_note_tool via @agent.tool wrapper
+     7. backend/app/agents/prompts.py — Add workflow instructions to system prompt:
+     "When the user asks you to summarize, synthesize, or find information across their notes, use search_notes to find relevant notes, then get_note to read
+     the full content, then synthesize and create_note with your findings."
+     8. backend/app/agents/tools/second_brain.py — No changes needed. The create_note_tool already exists and can be chained after search_notes + get_note.
+
+     Rich RAG — 2 new + 1 edit
+
+     9. backend/app/agents/tools/document_tools.py — New file:
+       - read_document(ctx, doc_id: str) — reads full document content by ID from the vector store. Calls RetrievalService.retrieve_by_document() and returns
+     full text. Gives the agent access to complete document content (not just search snippets).
+     10. backend/app/core/config.py — Set enable_hybrid_search=True as default in RAG settings (already exists in config, just needs default change)
+     11. backend/app/agents/assistant.py — Register read_document_tool
+
+     Feature details
+
+     Mobile PWA
+
+     - Install: Chrome/Safari prompts "Add to Home Screen" when user visits 2+ times
+     - Offline: Service worker caches the capture page and static assets. Offline captures queued to IndexedDB (stretch goal — MVP just shows "offline" page)
+     - Capture page: /capture route with textarea, title input, save button. Saves with tag "quick-capture". On save: toast, clear form. No sidebar, no header
+     — pure input.
+     - Re-ranking: Already implemented if RerankService is configured. No changes needed.
+     - read_document tool: Agent can now read full documents from the knowledge base, not just search snippets. Calls RetrievalService.retrieve_by_document()
+     to get all chunks of a document, concatenates them.
+
+     Verification
+
+     1. PWA: Open on mobile → "Add to Home Screen" prompt appears. Install → opens as standalone app.
+     2. Capture: Navigate to /capture → type text → save → appears in Second Brain with "quick-capture" tag.
+     3. Agent workflow: Chat → "summarize my notes about deployment" → agent returns a synthesis citing specific notes.
+     4. Rich RAG: Upload a PDF → search for content → results include both keyword and semantic matches. Agent can read full document via read_document.
+
+     ###   Backend
+  - workflow_tools.py — get_note tool (read full notes by ID/title)
+  - document_tools.py — read_document tool (read full RAG docs)
+  - assistant.py — registers both tools
+  - prompts.py — workflow instructions in system prompt
+  - config.py — hybrid search enabled by default
+
+   ### Frontend
+  - manifest.webmanifest — PWA manifest (installable)
+  - sw.js — service worker (offline caching)
+  - capture/page.tsx — quick capture page (/capture)
+  - layout.tsx — service worker registration + PWA meta tags
+
+  No new migrations. No new dependencies. bun dev for frontend, uv run uvicorn for backend.

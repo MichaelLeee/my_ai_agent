@@ -14,12 +14,14 @@ import {
   Building2,
   BookOpen,
   CreditCard,
+  Zap,
 } from "lucide-react";
 import { useSidebarStore, useAuthStore } from "@/stores";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetClose } from "@/components/ui";
 
 const navigation = [
   { name: "Dashboard", href: ROUTES.DASHBOARD, icon: LayoutDashboard },
+  { name: "Capture", href: ROUTES.CAPTURE, icon: Zap },
   { name: "Chat", href: ROUTES.CHAT, icon: MessageSquare },
   { name: "Instructions", href: ROUTES.INSTRUCTIONS, icon: BookOpen },
   { name: "Second Brain", href: ROUTES.SECOND_BRAIN, icon: Brain },

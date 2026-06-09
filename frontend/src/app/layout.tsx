@@ -91,7 +91,14 @@ export default function RootLayout({
       suppressHydrationWarning
       className={`${display.variable} ${body.variable} ${mono.variable}`}
     >
-      <body className="font-body">{children}</body>
+      <body className="font-body">
+        {children}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js')}`,
+          }}
+        />
+      </body>
     </html>
   );
 }

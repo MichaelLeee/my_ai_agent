@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Database, LayoutDashboard, MessageSquare, Search, Settings } from "lucide-react";
+import { Database, LayoutDashboard, MessageSquare, Settings, Zap } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 import { useAuth } from "@/hooks";
@@ -33,19 +33,7 @@ export function MobileTabBar() {
       href: user?.role === "admin" ? ROUTES.DASHBOARD : ROUTES.CHAT,
       icon: LayoutDashboard,
     },
-    {
-      label: "Search",
-      icon: Search,
-      onClick: () => {
-        // Trigger global ⌘K command palette via synthetic keyboard event.
-        const event = new KeyboardEvent("keydown", {
-          key: "k",
-          metaKey: true,
-          bubbles: true,
-        });
-        document.dispatchEvent(event);
-      },
-    },
+    { label: "Capture", href: ROUTES.CAPTURE, icon: Zap },
     { label: "Settings", href: ROUTES.SETTINGS, icon: Settings, startsWith: true },
   ];
 
