@@ -21,6 +21,8 @@ from app.db.models.custom_instruction import CustomInstruction
 from app.db.models.note import Note
 from app.db.models.insight import Insight
 from app.db.models.note_link import NoteLink
+from app.db.models.agent_memory import AgentMemory
+from app.db.models.api_key import ApiKey
 
 __all__ = [
     "User",
@@ -45,6 +47,8 @@ __all__ = [
     "Insight",
     "Note",
     "NoteLink",
+    "AgentMemory",
+    "ApiKey",
     "KnowledgeBase",
     "UserSlashCommand",
 ]

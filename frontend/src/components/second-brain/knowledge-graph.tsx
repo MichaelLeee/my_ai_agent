@@ -1,15 +1,25 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo, useCallback } from "react";
+import * as d3 from "d3";
 
 interface GraphNode {
   id: string; title: string; tags: string[];
-  x?: number; y?: number; vx?: number; vy?: number;
+}
+interface GraphEdge {
+  source: string;
+  target: string;
+  link_type?: string;
+}
+interface GraphData {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
 }
 
-interface GraphEdge {
-  source: string | GraphNode;
-  target: string | GraphNode;
+interface SimNode extends d3.SimulationNodeDatum {
+  id: string; title: string; tags: string[];
+}
+interface SimEdge extends d3.SimulationLinkDatum<SimNode> {
   link_type?: string;
 }
 
@@ -17,108 +27,161 @@ const EDGE_COLORS: Record<string, string> = {
   supports: "#16a34a",
   contradicts: "#dc2626",
   depends_on: "#f59e0b",
-  relates_to: "#d1d5db",
+  relates_to: "#94a3b8",
 };
+const TAG_COLORS = [
+  "#6366f1", "#ec4899", "#14b8a6", "#f97316", "#8b5cf6",
+  "#06b6d4", "#84cc16", "#f43f5e", "#3b82f6", "#eab308",
+];
 
-interface GraphData {
-  nodes: GraphNode[];
-  edges: GraphEdge[];
-}
-
-function forceSimulation(nodes: GraphNode[], edges: GraphEdge[], width: number, height: number) {
-  const centerX = width / 2;
-  const centerY = height / 2;
-  const alpha = { current: 1 };
-  const decay = 0.98;
-
-  nodes.forEach((n) => {
-    n.x = centerX + (Math.random() - 0.5) * 200;
-    n.y = centerY + (Math.random() - 0.5) * 200;
-    n.vx = 0; n.vy = 0;
-  });
-
-  for (let iter = 0; iter < 200 && alpha.current > 0.001; iter++) {
-    alpha.current *= decay;
-
-    for (let i = 0; i < nodes.length; i++) {
-      const a = nodes[i];
-      let fx = 0, fy = 0;
-
-      for (let j = i + 1; j < nodes.length; j++) {
-        const b = nodes[j];
-        const dx = (b.x || 0) - (a.x || 0);
-        const dy = (b.y || 0) - (a.y || 0);
-        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-        const force = 500 / (dist * dist);
-        const fx2 = (dx / dist) * force;
-        const fy2 = (dy / dist) * force;
-        fx -= fx2; fy -= fy2;
-        (b.vx = (b.vx || 0) + fx2);
-        (b.vy = (b.vy || 0) + fy2);
-      }
-
-      fx += (centerX - (a.x || 0)) * 0.005;
-      fy += (centerY - (a.y || 0)) * 0.005;
-
-      (a.vx = ((a.vx || 0) + fx) * 0.6);
-      (a.vy = ((a.vy || 0) + fy) * 0.6);
-      a.x = (a.x || 0) + (a.vx || 0);
-      a.y = (a.y || 0) + (a.vy || 0);
-      a.x = Math.max(30, Math.min(width - 30, a.x));
-      a.y = Math.max(30, Math.min(height - 30, a.y));
-    }
-  }
-
-  const edgeMap = new Map<string, Set<string>>();
-  for (const e of edges) {
-    const s = typeof e.source === "string" ? e.source : e.source.id;
-    const t = typeof e.target === "string" ? e.target : e.target.id;
-    if (!edgeMap.has(s)) edgeMap.set(s, new Set());
-    if (!edgeMap.has(t)) edgeMap.set(t, new Set());
-    edgeMap.get(s)!.add(t);
-    edgeMap.get(t)!.add(s);
-  }
-
-  // spring attraction for linked nodes
-  for (let iter = 0; iter < 10; iter++) {
-    for (const e of edges) {
-      const s = typeof e.source === "string" ? nodes.find((n) => n.id === e.source)! : e.source;
-      const t = typeof e.target === "string" ? nodes.find((n) => n.id === e.target)! : e.target;
-      if (!s || !t) continue;
-      const dx = (t.x || 0) - (s.x || 0);
-      const dy = (t.y || 0) - (s.y || 0);
-      const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-      const targetDist = 100;
-      const force = (dist - targetDist) * 0.01;
-      const f2x = (dx / dist) * force * 0.5;
-      const f2y = (dy / dist) * force * 0.5;
-      s.x = (s.x || 0) + f2x;
-      s.y = (s.y || 0) + f2y;
-      t.x = (t.x || 0) - f2x;
-      t.y = (t.y || 0) - f2y;
-    }
-  }
-}
-
-export function KnowledgeGraph({
-  data,
-  onSelect,
-}: {
-  data: GraphData | null;
-  onSelect?: (id: string) => void;
-}) {
+export function KnowledgeGraph({ data }: { data: GraphData | null }) {
   const svgRef = useRef<SVGSVGElement>(null);
-  const [hovered, setHovered] = useState<string | null>(null);
-  const [positions, setPositions] = useState<GraphNode[]>([]);
-  const [computed, setComputed] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const simRef = useRef<d3.Simulation<SimNode, SimEdge> | null>(null);
+  const [selectedTag, setSelectedTag] = useState("");
+  const [hiddenTypes, setHiddenTypes] = useState<Set<string>>(new Set());
+  const [selectedNode, setSelectedNode] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!data || data.nodes.length === 0) return;
-    const nodes = data.nodes.map((n) => ({ ...n }));
-    forceSimulation(nodes, data.edges, 800, 500);
-    setPositions(nodes);
-    setComputed(true);
+  const allTags = useMemo(() => {
+    if (!data) return [];
+    const tags = new Set<string>();
+    data.nodes.forEach((n) => n.tags?.forEach((t) => tags.add(t)));
+    return Array.from(tags).sort();
   }, [data]);
+
+  // Filter data
+  const { simNodes, simEdges } = useMemo(() => {
+    if (!data) return { simNodes: [], simEdges: [] };
+    if (!selectedTag) {
+      return {
+        simNodes: data.nodes.map((n) => ({ ...n })),
+        simEdges: data.edges.map((e) => ({ ...e })),
+      };
+    }
+    const nodeIds = new Set(
+      data.nodes.filter((n) => n.tags?.includes(selectedTag)).map((n) => n.id)
+    );
+    return {
+      simNodes: data.nodes.filter((n) => nodeIds.has(n.id)).map((n) => ({ ...n })),
+      simEdges: data.edges
+        .filter((e) => nodeIds.has(e.source) && nodeIds.has(e.target))
+        .map((e) => ({ ...e })),
+    };
+  }, [data, selectedTag]);
+
+  const toggleType = useCallback((type: string) => {
+    setHiddenTypes((prev) => {
+      const next = new Set(prev);
+      next.has(type) ? next.delete(type) : next.add(type);
+      return next;
+    });
+  }, []);
+
+  // D3 simulation
+  useEffect(() => {
+    if (!svgRef.current || simNodes.length === 0) return;
+
+    const svg = d3.select(svgRef.current);
+    const width = containerRef.current?.clientWidth || 800;
+    const height = 500;
+    svg.selectAll("*").remove();
+
+    const g = svg.append("g");
+
+    // Zoom + pan
+    const zoom = d3.zoom<SVGSVGElement, unknown>()
+      .scaleExtent([0.2, 4])
+      .on("zoom", (event) => g.attr("transform", event.transform.toString()));
+    svg.call(zoom);
+
+    // Force simulation
+    const simulation = d3.forceSimulation<SimNode>(simNodes)
+      .force("link", d3.forceLink<SimNode, SimEdge>(simEdges).id((d) => d.id).distance(100))
+      .force("charge", d3.forceManyBody().strength(-300))
+      .force("center", d3.forceCenter(width / 2, height / 2))
+      .force("collision", d3.forceCollide(20));
+    simRef.current = simulation;
+
+    // Edges
+    const link = g.append("g").selectAll<SVGLineElement, SimEdge>("line")
+      .data(simEdges)
+      .join("line")
+      .attr("stroke", (d) => EDGE_COLORS[d.link_type || "relates_to"] || EDGE_COLORS.relates_to)
+      .attr("stroke-width", (d) => (d.link_type === "relates_to" ? 1 : 2))
+      .attr("opacity", 0.6);
+
+    // Nodes
+    const node = g.append("g").selectAll<SVGGElement, SimNode>("g")
+      .data(simNodes)
+      .join("g")
+      .call(
+        d3.drag<SVGGElement, SimNode>()
+          .on("start", (event, d) => {
+            if (!event.active) simulation.alphaTarget(0.3).restart();
+            d.fx = d.x; d.fy = d.y;
+          })
+          .on("drag", (event, d) => { d.fx = event.x; d.fy = event.y; })
+          .on("end", (event, d) => {
+            if (!event.active) simulation.alphaTarget(0);
+            d.fx = null; d.fy = null;
+          })
+      );
+
+    node.append("circle")
+      .attr("r", 7)
+      .attr("fill", (d) => {
+        const tag = d.tags?.[0];
+        return tag ? TAG_COLORS[allTags.indexOf(tag) % TAG_COLORS.length] : "#a5b4fc";
+      })
+      .attr("stroke", "#fff")
+      .attr("stroke-width", 0);
+
+    node.append("title")
+      .text((d) => `${d.title}\n${(d.tags || []).join(", ")}`);
+
+    node.on("click", (_event, d) => setSelectedNode(d.id));
+
+    // Hover effects
+    node.on("mouseenter", function () {
+      d3.select(this).select("circle")
+        .transition().duration(150).attr("r", 10).attr("stroke-width", 2);
+    });
+    node.on("mouseleave", function () {
+      d3.select(this).select("circle")
+        .transition().duration(150).attr("r", 7).attr("stroke-width", 0);
+    });
+
+    // Labels (visible on larger graphs only when zoomed)
+    node.append("text")
+      .attr("dx", 12).attr("dy", 4)
+      .text((d) => d.title.length > 20 ? d.title.slice(0, 20) + "..." : d.title)
+      .style("font-size", "10px")
+      .style("fill", "currentColor")
+      .style("opacity", 0);
+
+    // Tick
+    simulation.on("tick", () => {
+      link
+        .attr("x1", (d) => (d.source as SimNode).x!)
+        .attr("y1", (d) => (d.source as SimNode).y!)
+        .attr("x2", (d) => (d.target as SimNode).x!)
+        .attr("y2", (d) => (d.target as SimNode).y!);
+
+      node.attr("transform", (d) => `translate(${d.x},${d.y})`);
+    });
+
+    return () => { simulation.stop(); };
+  }, [simNodes, simEdges, allTags]);
+
+  // Update edge visibility when hiddenTypes changes
+  useEffect(() => {
+    if (!simEdges.length) return;
+    const svg = d3.select(svgRef.current);
+    svg.selectAll<SVGLineElement, SimEdge>("line")
+      .attr("opacity", (d) =>
+        hiddenTypes.has(d.link_type || "relates_to") ? 0 : 0.6
+      );
+  }, [hiddenTypes, simEdges]);
 
   if (!data || data.nodes.length === 0) {
     return (
@@ -128,67 +191,59 @@ export function KnowledgeGraph({
     );
   }
 
-  const nodeMap = new Map(positions.map((n) => [n.id, n]));
-  const edgeLines = data.edges.map((e, i) => {
-    const s = typeof e.source === "string" ? nodeMap.get(e.source) : e.source as GraphNode;
-    const t = typeof e.target === "string" ? nodeMap.get(e.target) : e.target as GraphNode;
-    if (!s || !t) return null;
-    const lt = e.link_type || "relates_to";
-    const color = EDGE_COLORS[lt] || EDGE_COLORS.relates_to;
-    return (
-      <line key={i} x1={s.x} y1={s.y} x2={t.x} y2={t.y}
-        stroke={color} strokeWidth={lt === "relates_to" ? 1 : 2} />
-    );
-  });
-
   return (
     <div className="border rounded-xl overflow-hidden bg-background">
-      <div className="px-4 py-2 border-b bg-muted/30">
+      {/* Header */}
+      <div className="px-4 py-2 border-b bg-muted/30 flex items-center gap-3 flex-wrap">
         <span className="text-sm font-medium">Knowledge Graph</span>
-        <span className="text-xs text-muted-foreground ml-2">
-          {data.nodes.length} notes, {data.edges.length} links
+        <span className="text-xs text-muted-foreground">
+          {simNodes.length} notes, {simEdges.length} links
         </span>
+        {selectedNode && (
+          <span className="text-xs text-brand ml-2">
+            Selected: {simNodes.find((n) => n.id === selectedNode)?.title?.slice(0, 30)}
+            <button onClick={() => setSelectedNode(null)} className="ml-2 text-muted-foreground hover:text-foreground">✕</button>
+          </span>
+        )}
+        {allTags.length > 0 && (
+          <select
+            value={selectedTag}
+            onChange={(e) => setSelectedTag(e.target.value)}
+            className="ml-auto text-xs border rounded px-2 py-1 bg-background"
+          >
+            <option value="">All tags</option>
+            {allTags.map((t) => (
+              <option key={t} value={t}>{t}</option>
+            ))}
+          </select>
+        )}
       </div>
-      <svg ref={svgRef} viewBox="0 0 800 500"
-        className="w-full h-[400px] touch-none">
-        {edgeLines}
-        {positions.map((n) => {
-          const isHovered = hovered === n.id;
-          const r = isHovered ? 10 : 7;
+
+      {/* SVG */}
+      <div ref={containerRef}>
+        <svg ref={svgRef} viewBox={`0 0 ${containerRef.current?.clientWidth || 800} 500`}
+          className="w-full h-[450px]" />
+      </div>
+
+      {/* Legend */}
+      <div className="flex gap-3 px-4 py-2 border-t bg-muted/20 text-xs text-muted-foreground flex-wrap items-center">
+        {Object.entries(EDGE_COLORS).map(([type, color]) => {
+          const hidden = hiddenTypes.has(type);
           return (
-            <g key={n.id} className="cursor-pointer"
-              onMouseEnter={() => setHovered(n.id)}
-              onMouseLeave={() => setHovered(null)}
-              onClick={() => onSelect?.(n.id)}>
-              <circle cx={n.x} cy={n.y} r={r}
-                fill={isHovered ? "#6366f1" : "#a5b4fc"} />
-              {isHovered && (
-                <>
-                  <text x={(n.x || 0) + 14} y={(n.y || 0) + 4}
-                    className="text-xs fill-foreground font-medium"
-                    style={{ fontSize: "11px" }}>
-                    {n.title.length > 25 ? n.title.slice(0, 25) + "..." : n.title}
-                  </text>
-                  {n.tags.length > 0 && (
-                    <text x={(n.x || 0) + 14} y={(n.y || 0) + 18}
-                      className="fill-muted-foreground"
-                      style={{ fontSize: "9px" }}>
-                      {n.tags.join(", ")}
-                    </text>
-                  )}
-                </>
-              )}
-            </g>
+            <button key={type} onClick={() => toggleType(type)}
+              className={`flex items-center gap-1 hover:opacity-100 transition-opacity ${hidden ? "opacity-30 line-through" : "opacity-80"}`}>
+              <span className="w-3 h-0.5 inline-block rounded"
+                style={{ backgroundColor: color }} />
+              {type.replace("_", " ")}
+            </button>
           );
         })}
-      </svg>
-      <div className="flex gap-4 px-4 py-2 border-t bg-muted/20 text-xs text-muted-foreground">
-        {Object.entries(EDGE_COLORS).map(([type, color]) => (
-          <span key={type} className="flex items-center gap-1">
-            <span className="w-3 h-0.5 inline-block rounded" style={{ backgroundColor: color }} />
-            {type.replace("_", " ")}
-          </span>
-        ))}
+        {selectedTag && (
+          <button onClick={() => setSelectedTag("")}
+            className="ml-auto text-brand hover:underline text-[11px]">
+            Clear filter
+          </button>
+        )}
       </div>
     </div>
   );

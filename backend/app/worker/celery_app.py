@@ -43,6 +43,10 @@ celery_app.conf.beat_schedule = {
         "task": "reflection.generate_morning_briefing",
         "schedule": crontab(hour=7, minute=0),
     },
+    "weekly-digest": {
+        "task": "digest.send_weekly_digest",
+        "schedule": crontab(hour=9, minute=0, day_of_week=1),  # Monday 9 AM
+    },
 }
 
 

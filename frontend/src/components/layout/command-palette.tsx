@@ -39,10 +39,18 @@ export function CommandPalette() {
   const [search, setSearch] = useState("");
   const [conversations, setConversations] = useState<ConversationItem[]>([]);
 
-  // Global ⌘K / Ctrl+K shortcut
+  // Global keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+      const mod = e.metaKey || e.ctrlKey;
+      const key = e.key.toLowerCase();
+
+      if (mod && e.shiftKey) {
+        if (key === "c") { e.preventDefault(); go(ROUTES.CAPTURE); return; }
+        if (key === "d") { e.preventDefault(); go(ROUTES.DASHBOARD); return; }
+        if (key === "n") { e.preventDefault(); go(ROUTES.SECOND_BRAIN); return; }
+      }
+      if (mod && key === "k") {
         e.preventDefault();
         setOpen((o) => !o);
       }

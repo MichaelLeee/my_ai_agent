@@ -1,6 +1,7 @@
 "use client";
 
-import { Pencil, Trash2, Link2 } from "lucide-react";
+import { memo } from "react";
+import { Pencil, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
@@ -14,11 +15,11 @@ interface NoteCardProps {
     is_archived: boolean;
     created_at: string;
   };
-  onEdit: (note: any) => void;
+  onEdit: (note: NoteCardProps["note"]) => void;
   onDelete: (id: string) => void;
 }
 
-export function NoteCard({ note, onEdit, onDelete }: NoteCardProps) {
+export const NoteCard = memo(function NoteCard({ note, onEdit, onDelete }: NoteCardProps) {
   return (
     <Card className="flex flex-col">
       <CardHeader className="pb-2">
@@ -55,4 +56,4 @@ export function NoteCard({ note, onEdit, onDelete }: NoteCardProps) {
       </CardFooter>
     </Card>
   );
-}
+});

@@ -446,6 +446,7 @@ async def get_current_user_ws(
 
 import secrets
 
+import bcrypt
 from fastapi.security import APIKeyHeader
 
 
@@ -471,6 +472,64 @@ async def verify_api_key(
 
 
 ValidAPIKey = Annotated[str, Depends(verify_api_key)]
+
+
+async def verify_user_api_key(
+    api_key: Annotated[str | None, Depends(api_key_header)], db: DBSession,
+) -> User:
+    """Verify a per-user API key. Falls back to static server key.
+
+    For user keys: prefix lookup → bcrypt verify → return User.
+    Also accepts the static server-wide API_KEY for backward compat.
+    """
+    from app.db.models.api_key import ApiKey as ApiKeyModel
+    from app.core.exceptions import AuthenticationError, AuthorizationError
+
+    if api_key is None:
+        raise AuthenticationError(message="API Key header missing")
+
+    # Static server key — backward compat
+    if secrets.compare_digest(api_key, settings.API_KEY):
+        return await _get_first_admin(db)
+
+    # User API key — prefix lookup
+    if api_key.startswith("sk_"):
+        prefix = api_key[:10]
+        result = await db.execute(
+            select(ApiKeyModel).where(
+                ApiKeyModel.key_prefix == prefix,
+                ApiKeyModel.is_revoked.is_(False)))
+        key = result.scalar_one_or_none()
+        if key and bcrypt.checkpw(api_key.encode(), key.key_hash.encode()):
+            # Record usage
+            from sqlalchemy import update as sql_update
+            from sqlalchemy.sql import func as sql_func
+            await db.execute(
+                sql_update(ApiKeyModel).where(ApiKeyModel.id == key.id).values(
+                    last_used_at=sql_func.now()))
+            await db.flush()
+            # Return user
+            user = await db.get(User, key.user_id)
+            if user and user.is_active:
+                return user
+
+    raise AuthorizationError(message="Invalid API Key")
+
+
+async def _get_first_admin(db: DBSession) -> User:
+    """Get the first active admin user for static API key auth."""
+    from app.db.models.user import UserRole
+    result = await db.execute(
+        select(User).where(
+            User.is_active.is_(True), User.role == UserRole.ADMIN.value).limit(1))
+    user = result.scalar_one_or_none()
+    if user is None:
+        from app.core.exceptions import AuthenticationError
+        raise AuthenticationError(message="No admin user found for API key auth")
+    return user
+
+
+UserAPIKey = Annotated[User, Depends(verify_user_api_key)]
 
 # === RAG Service Dependencies ===
 

@@ -56,6 +56,14 @@ class User(Base, TimestampMixin):
     insights: Mapped[list["Insight"]] = relationship(
         "Insight", back_populates="user", cascade="all, delete-orphan"
     )
+    memories: Mapped[list["AgentMemory"]] = relationship(
+        "AgentMemory", back_populates="user", cascade="all, delete-orphan"
+    )
+    email_digest_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=True, nullable=False)
+    api_keys: Mapped[list["ApiKey"]] = relationship(
+        "ApiKey", back_populates="user", cascade="all, delete-orphan"
+    )
 
     @property
     def user_role(self) -> UserRole:

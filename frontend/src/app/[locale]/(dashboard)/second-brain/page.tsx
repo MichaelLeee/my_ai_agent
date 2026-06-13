@@ -5,10 +5,15 @@ import { Brain, Plus, Search, Share2, X, SlidersHorizontal, CalendarDays } from 
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Spinner } from "@/components/ui";
+import { Skeleton } from "@/components/ui/skeleton";
 import { NoteCard } from "@/components/second-brain/note-card";
-import { KnowledgeGraph } from "@/components/second-brain/knowledge-graph";
+import dynamic from "next/dynamic";
 import { NoteEditor } from "@/components/second-brain/note-editor";
+
+const KnowledgeGraph = dynamic(
+  () => import("@/components/second-brain/knowledge-graph").then((m) => ({ default: m.KnowledgeGraph })),
+  { ssr: false, loading: () => <div className="flex items-center justify-center h-[400px] border rounded-xl bg-muted/20 text-muted-foreground text-sm">Loading graph...</div> }
+);
 import { apiClient } from "@/lib/api-client";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
@@ -201,7 +206,11 @@ export default function SecondBrainPage() {
       {showGraph && <KnowledgeGraph data={graphData} />}
 
       {loading ? (
-        <div className="flex items-center justify-center py-20"><Spinner /></div>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Skeleton key={i} className="h-[140px] rounded-xl" />
+          ))}
+        </div>
       ) : notes.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 text-center">
           <div className="rounded-full bg-muted p-4 mb-4">

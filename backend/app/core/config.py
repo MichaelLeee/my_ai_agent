@@ -108,6 +108,13 @@ class Settings(BaseSettings):
     API_KEY: str = "change-me-in-production"
     API_KEY_HEADER: str = "X-API-Key"
 
+    # === SMTP (Email) ===
+    SMTP_HOST: str = "localhost"
+    SMTP_PORT: int = 1025
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM: str = "My AI Agent <noreply@myaiagent.local>"
+
     @field_validator("API_KEY")
     @classmethod
     def validate_api_key(cls, v: str, info: ValidationInfo) -> str:
@@ -207,7 +214,7 @@ class Settings(BaseSettings):
     RAG_DEFAULT_COLLECTION: str = "documents"
     RAG_TOP_K: int = 10
     RAG_CHUNKING_STRATEGY: str = "recursive"  # recursive, markdown, or fixed
-    RAG_HYBRID_SEARCH: bool = False  # Enable BM25 + vector hybrid search
+    RAG_HYBRID_SEARCH: bool = True   # Enable BM25 + vector hybrid search
     RAG_ENABLE_OCR: bool = False  # OCR fallback for scanned PDFs (requires tesseract)
 
     # Reranker

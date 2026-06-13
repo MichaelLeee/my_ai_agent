@@ -620,3 +620,256 @@ text. Gives the agent access to complete
   - layout.tsx — service worker registration + PWA meta tags
 
   No new migrations. No new dependencies. bun dev for frontend, uv run uvicorn for backend.
+
+## Plan: v6.0 — API Keys + Email Digest + Knowledge Graph v2
+  1. API Keys & Integrations — extensible platform
+  2. Email Digest — agent reaches you
+  3. Knowledge Graph v2 — zoomable, filterable, useful
+
+ Context
+
+ Three features that make the platform extensible, ambient, and visual:
+
+ 1. API Keys — per-user API keys (sk_xxx) so users can access their Second Brain from CLI, scripts, shortcuts, or integrations. Currently only a single static server-wide key exists.
+ 2. Email Digest — weekly email with insights, stats, journal streak, forgotten notes. The agent reaches you instead of you reaching it. Zero email infrastructure exists today.
+ 3. Knowledge Graph v2 — D3-powered interactive graph with zoom, pan, tag filtering, click-to-navigate. Currently a custom 200-line SVG force simulation with no interaction.
+
+ Changes (10 new + 6 edits + 1 migration + 1 dependency)
+
+ API Keys — 5 new + 3 edits + 1 migration
+
+ 1. db/models/api_key.py — new model: id, user_id (FK), name, key_prefix (first 8 chars of sk_), key_hash (bcrypt), last_used_at, is_revoked, created_at, updated_at
+ 2. schemas/api_key.py — ApiKeyCreate, ApiKeyRead (plain key returned ONCE on creation, never stored), ApiKeyListItem
+ 3. repositories/api_key.py — create, list_for_user, get_by_prefix, revoke
+ 4. api/routes/v1/api_keys.py — POST /me/api-keys (create), GET /me/api-keys (list), DELETE /me/api-keys/:id (revoke)
+ 5. frontend/src/app/[locale]/(dashboard)/settings/api-keys/page.tsx — API key management page: create (with one-time copy), list, revoke
+ 6. api/deps.py — add UserAPIKey dependency: read X-API-Key header → prefix lookup → bcrypt verify → return user. Falls back to static API_KEY for backward compat.
+ 7. alembic/versions/0025_add_api_keys.py — migration
+ 8. db/models/__init__.py + db/models/user.py — register ApiKey model, add relationship
+
+ Email Digest — 3 new + 3 edits
+
+ 9. services/email/__init__.py + services/email/sender.py — EmailService using aiosmtplib. send(to, subject, html_body) method. Reads SMTP config from settings.
+ 10. worker/tasks/digest.py — Celery task: send_weekly_digest — for each active user with email_digest enabled, builds HTML digest with stats, top tags, unread insights, forgotten notes. Runs Monday 9
+ AM.
+ 11. db/models/user.py — add email_digest_enabled boolean column (default true) to User model
+ 12. alembic/versions/0026_add_email_digest.py — migration (add column)
+ 13. core/config.py — add SMTP settings: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, SMTP_FROM
+ 14. worker/celery_app.py — add digest to beat schedule (Monday 9 AM)
+
+ Knowledge Graph v2 — 2 new files + 1 dependency
+
+ 15. frontend/package.json — add d3 and @types/d3 dependencies
+ 16. frontend/src/components/second-brain/knowledge-graph.tsx — rewrite with D3:
+   - d3.forceSimulation for layout
+   - d3.zoom for zoom/pan
+   - d3.drag for node dragging
+   - Tag filter dropdown (filter nodes by tag)
+   - Link type legend (clickable, toggles edge visibility)
+   - Click node → navigate to note detail
+   - Cluster coloring by dominant tag
+   - Tooltip on hover with note title + tags + link count
+
+ Feature details
+
+ API Keys
+
+     Feature details
+
+     API Keys
+
+     - Format: sk_ + 43 random chars (e.g. sk_a1b2c3d4e5f6...)
+     - Created via UI or slash command
+     - Plain key shown once — user copies and stores it
+     - Auth: X-API-Key: sk_xxx → prefix lookup → bcrypt.verify → authenticate as user
+     - Scoped to user — key holder gets same access as the user
+     - Revocation: soft-delete (sets is_revoked=true)
+
+     Email Digest
+
+     - Template: clean HTML with stats (notes this week, journal streak, top tags), unread insights list, forgotten notes
+     - Sent Monday 9 AM via Celery beat
+     - User toggles on/off via settings
+     - SMTP: local dev uses Mailpit/Mailhog, production uses SendGrid/SES
+
+     Knowledge Graph v2
+
+     - D3 replaces custom force sim — zoom, pan, drag out of the box
+     - Tag filter: dropdown listing all tags, selecting filters visible nodes
+     - Link type toggles: click legend items to show/hide edge types
+     - Click a node → navigate to that note
+     - Responsive: fills container width, no hardcoded viewBox
+
+     Verification
+
+     1. Create API key → copy it → curl -H "X-API-Key: sk_xxx" /api/v1/notes → returns user's notes
+     2. Revoke key → same curl → 403
+     3. docker compose exec app uv run my_ai_agent cmd send-digest → email arrives
+     4. Graph: load /second-brain → click "Show Graph" → zoom in/out → click tag filter → nodes filter → click node → navigate to note
+
+  ┌──────────────┬───────────────────────────────────────────────────────────────────────────────────────────────────┐
+  │   Feature    │                                               Files                                               │
+  ├──────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ API Keys     │ model, schema, repo, routes, auth dep in deps.py, migration 0025, registrations                   │
+  ├──────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Email Digest │ email service, digest Celery task, SMTP config, user toggle column, migration 0026, beat schedule │
+  ├──────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Graph v2     │ tag filter, clickable legend, cluster coloring, hover dimming, click-to-navigate                  │
+  └──────────────┴───────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+  ---
+  After extracting:
+
+  # Backend
+  make bootstrap    # runs both migrations
+  docker compose restart app celery_worker celery_beat
+
+  # Optional: test email locally with Mailpit
+  docker run -d -p 1025:1025 -p 8025:8025 axllent/mailpit
+
+  API Key usage: curl -H "X-API-Key: sk_xxx" /api/v1/notes
+
+  ##    ---  ---  ---Go deeper — add one more meaningful feature:  ---  ---  ---
+  1. Slack/Telegram Integration — agent in messaging apps
+  2. Voice Notes — speak-to-capture on mobile (Web Speech API)
+  3. D3 Graph Finale — zoom/pan/drag (bun add d3 + 30 lines)
+
+  Or wrap up — the platform is production-grade:
+  - Write end-to-end tests
+  - Performance optimization
+  - Documentation
+
+##  Plan: v7.0 — Voice Notes + D3 Graph Finale
+
+ Context
+
+ Slack/Telegram integration is already fully built — adapters, webhooks, agent routing, admin CRUD, CLI tools. Just needs configuration, not code. The two rema
+ining features are small frontend changes:
+
+
+     Slack/Telegram integration is already fully built — adapters, webhooks, agent routing, admin CRUD, CLI tools. Just needs configuration, not code. The two
+remaining features are small frontend
+     changes:
+
+     1. Voice Notes — add speech-to-text to the capture page using the browser's built-in Web Speech API. Zero dependencies.
+     2. D3 Graph Finale — install D3, add zoom/pan/drag to the knowledge graph. 2 files changed.
+
+     Changes (3 files total)
+
+
+     1. frontend/src/app/[locale]/(dashboard)/capture/page.tsx — Add a microphone button below the textarea:
+       - Web Speech API (SpeechRecognition / webkitSpeechRecognition)
+       - Click to start listening, click again to stop
+       - Interim results stream into the textarea in real-time
+       - Final result appended to content when stopped
+       - Visual pulse animation while recording
+       - Graceful fallback if browser doesn't support it (hide button)
+
+     D3 Graph — 2 files
+
+     2. frontend/package.json — add d3 and @types/d3
+     3. frontend/src/components/second-brain/knowledge-graph.tsx — Add D3-powered interactivity:
+       - d3.zoom() — zoom in/out with scroll, pan with drag
+       - d3.drag() — drag individual nodes to rearrange
+       - d3.forceSimulation() — replace circular layout with proper force simulation
+       - Keep all existing features: tag filter, clickable legend, cluster coloring
+
+     Verification
+
+     1. Voice: open /capture on Chrome → mic button visible → click → speak → text appears → click stop → save
+     2. Graph: open /second-brain → Show Graph → scroll to zoom → drag to pan → drag node to rearrange → tag filter works → legend toggles work
+
+
+  ## After extracting into frontend/:
+  bun install          # installs d3 + @types/d3
+  bun dev              # voice capture + zoomable graph live
+
+  Voice Notes: mic button on /capture — click to speak, text streams live, click to stop. Chrome/Safari supported.
+
+  D3 Graph: zoom with scroll, pan with drag, drag nodes to rearrange, force simulation layout, click node to select.
+
+## Here is plan:
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+ Plan: v8.0 — Ship & Polish
+
+ Context
+
+ The platform is feature-complete. This pass tightens everything: better loading states, global keyboard shortcuts, E2E test coverage, and performance. Theme
+ toggle is already built — just needs a settings page wired up.
+
+ Changes (5 new + 4 edits, frontend-only)
+
+ 1. Loading skeletons — 2 files edited
+
+     Changes (5 new + 4 edits, frontend-only)
+
+     1. Loading skeletons — 2 files edited
+
+     - instructions/page.tsx — replace centered <Spinner /> with a grid of <Skeleton /> cards (3 columns, 2 rows of skeleton cards) while loading
+     - second-brain/page.tsx — replace centered <Spinner /> with a <Skeleton /> note card grid while loading
+
+     2. Keyboard shortcuts — 1 file edited
+
+     - command-palette.tsx — add global event listeners alongside existing ⌘K:
+       - ⌘+Shift+C → navigate to /capture
+       - ⌘+Shift+D → navigate to /dashboard
+       - ⌘+Shift+N → navigate to /second-brain (new note flow)
+     Already working: ⌘+K (palette), ⌘+N (new chat from palette)
+
+     3. E2E tests — 3 files new
+
+     - e2e/second-brain.spec.ts — playwright test: login → navigate to second-brain → create note → search note → verify result → delete note → verify removed
+     - e2e/dashboard.spec.ts — login → dashboard loads → stat cards visible → top tags rendered
+     - e2e/instructions.spec.ts — login → instructions page → create instruction → toggle → delete
+
+     4. Performance — 1 file new + 1 file edited
+
+     - second-brain/page.tsx — lazy-load KnowledgeGraph via dynamic(() => import(...), { ssr: false }) so D3 only loads when user clicks "Show Graph"
+     - components/second-brain/note-card.tsx — wrap in React.memo to prevent re-renders when other notes change
+
+     Verification
+
+     1. bun dev → Instructions page shows skeleton cards instead of spinner
+     2. ⌘+Shift+C → navigates to capture page
+     3. bunx playwright test e2e/second-brain.spec.ts → all steps pass
+     4. Graph click: D3 bundle only loads on-demand (check Network tab)
+
+  ┌────────────────────┬─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+  │        Area        │                                                      What changed                                                       │
+  ├────────────────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Loading skeletons  │ Instructions page shows 6 skeleton cards instead of spinner. Second Brain shows skeleton grid.                          │
+  ├────────────────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Keyboard shortcuts │ ⌘⇧C → Capture, ⌘⇧D → Dashboard, ⌘⇧N → Second Brain. ⌘K still opens palette.                                             │
+  ├────────────────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Performance        │ D3 graph lazy-loads only when "Show Graph" is clicked. NoteCard wrapped in React.memo.                                  │
+  ├────────────────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ E2E tests          │ second-brain.spec.ts (create → search → delete), dashboard.spec.ts (stats load), instructions.spec.ts (create → delete) │
+  └────────────────────┴─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+  Run tests: bunx playwright test
+
+  ## The platform is in great shape:
+
+  - 25+ features across 8 versions
+  - Proactive agent with memory and workflows
+  - Hybrid search, knowledge graph, PWA
+  - API keys, email digest
+  - E2E tests, keyboard shortcuts, performance
+
+  The only thing left is the decision of what name to give it. "My AI Agent" was the working title — but it's more than that now.
+## Three names:
+
+  ┌─────────┬───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+  │  Name   │                                                                  Why it fits                                                                  │
+  ├─────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Reflect │ The reflection loop is your killer feature — no other AI tool proactively detects patterns, contradictions, and forgotten notes. The name is  │
+  │         │ the feature.                                                                                                                                  │
+  ├─────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Synapse │ Your platform builds connections: note-to-note links, knowledge graphs, semantic search, typed relationships. A synapse is the space between  │
+  │         │ neurons where ideas cross.                                                                                                                    │
+  ├─────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Kairo   │ From Greek kairos — "the right or opportune moment." The agent doesn't just wait for you — it surfaces the right insight at the right time.   │
+  │         │ Short, brandable, .com likely available.                                                                                                      │
+  └─────────┴───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+  My pick: Reflect. It's one word, it's what the product does, and it positions you as the thoughtful alternative to ChatGPT (reactive) and Notion (static).

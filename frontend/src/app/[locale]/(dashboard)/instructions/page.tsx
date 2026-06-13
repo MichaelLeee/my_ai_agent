@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { BookOpen, Plus, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Spinner } from "@/components/ui";
+import { Skeleton } from "@/components/ui/skeleton";
 import { InstructionCard } from "@/components/custom-instructions/instruction-card";
 import { InstructionEditor } from "@/components/custom-instructions/instruction-editor";
 import { useCustomInstructions } from "@/hooks/use-custom-instructions";
@@ -34,7 +34,24 @@ export default function InstructionsPage() {
     setDeleteId(null);
   };
 
-  if (isLoading) return <div className="flex items-center justify-center py-20"><Spinner /></div>;
+  if (isLoading) {
+    return (
+      <div className="flex flex-col gap-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <Skeleton className="h-8 w-48 mb-2" />
+            <Skeleton className="h-4 w-72" />
+          </div>
+          <Skeleton className="h-10 w-36 rounded-lg" />
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Skeleton key={i} className="h-40 rounded-xl" />
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   if (error) {
     return (
